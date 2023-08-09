@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
@@ -36,8 +37,10 @@ import (
 )
 
 const (
-	ResourceNodes  = "nodes"
-	MigConfigLabel = "nvidia.com/mig.config"
+	ResourceNodes           = "nodes"
+	MigConfigLabel          = "nvidia.com/mig.config"
+	ConfigSkipLabelValue    = "easystack-skip-me"
+	ConfigDisableLabelValue = "all-disabled"
 
 	DefaultReconfigureScript         = "/usr/bin/reconfigure-mig.sh"
 	DefaultHostRootMount             = "/host"
@@ -272,6 +275,18 @@ func parseGPUCLientsFile(file string) (*GPUClients, error) {
 }
 
 func runScript(migConfigValue string) error {
+	if migConfigValue == ConfigSkipLabelValue {
+		log.Infof("Receive skip config. Skipping execute...")
+		return nil
+	}
+	if migConfigValue != ConfigDisableLabelValue {
+		// kubelet periodically requeues the Pod after 60-90 seconds.
+		// refer: https://ahmet.im/blog/kubernetes-secret-volumes-delay/
+		// TODO: update by file checkSum changed
+		log.Info("Waiting for mounted ConfigMaps updating")
+		time.Sleep(90 * time.Second)
+	}
+
 	gpuClients, err := parseGPUCLientsFile(gpuClientsFileFlag)
 	if err != nil {
 		return fmt.Errorf("error parsing host's GPU clients file: %s", err)

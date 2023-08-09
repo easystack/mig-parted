@@ -1,0 +1,1 @@
+REGISTRY=${registry} IMAGE_TAG=v0.5.0-es VERSION=v0.5.0-es make build-ubi8 -f deployments/gpu-operator/Makefile
