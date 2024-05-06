@@ -50,7 +50,8 @@ RUN make PREFIX=/artifacts cmds
 RUN cp ./deployments/gpu-operator/reconfigure-mig.sh /artifacts/reconfigure-mig.sh
 
 ARG TARGETARCH
-RUN OS_ARCH=${TARGETARCH/x86_64/amd64} && OS_ARCH=${OS_ARCH/aarch64/arm64} && curl -o /artifacts/kubectl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${OS_ARCH}/kubectl"
+ARG KUBERNETES_VERSION="v1.28.2"
+RUN OS_ARCH=${TARGETARCH/x86_64/amd64} && OS_ARCH=${OS_ARCH/aarch64/arm64} && curl -o /artifacts/kubectl -L "https://storage.googleapis.com/kubernetes-release/release/${KUBERNETES_VERSION}/bin/linux/${OS_ARCH}/kubectl"
 RUN chmod a+x /artifacts/kubectl
 
 # Install the nvidia-ctk binary as a go executable
