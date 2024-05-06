@@ -57,7 +57,7 @@ RUN chmod a+x /artifacts/kubectl
 # Install the nvidia-ctk binary as a go executable
 # TODO: Once we can consume a golang API from reconfigure.sh we can remove this.
 ARG NVIDIA_CTK_VERSION=main
-RUN go install -ldflags "-extldflags=-Wl,-z,lazy -s -w" \
+RUN GOPROXY="http://goproxy.easystack.io,direct" go install -ldflags "-extldflags=-Wl,-z,lazy -s -w" \
     github.com/NVIDIA/nvidia-container-toolkit/cmd/nvidia-ctk@${NVIDIA_CTK_VERSION} \
     && cp ${GOPATH}/bin/nvidia-ctk /artifacts/nvidia-ctk
 
