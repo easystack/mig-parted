@@ -441,6 +441,23 @@ if [ "${?}" != "0" ]; then
 	exit_failed
 fi
 
+echo "Shutting down gpu-config-daemon by disabling their component-specific nodeSelector labels in NodeFeatureRule"
+cat <<EOF | kubectl apply -f -
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: gpu-driver-${NODE_NAME}
+spec:
+  rules:
+  - name: "gpu driver"
+    labels:
+      ecns.easystack.io/gpu.driver: paused-for-mig-change
+    matchFeatures:
+    - feature: system.name
+      matchExpressions:
+        nodename: {op: In, value: ["${NODE_NAME}"]}
+EOF
+
 echo "Waiting for the device-plugin to shutdown"
 kubectl wait --for=delete pod \
 	--timeout=5m \
@@ -468,6 +485,13 @@ kubectl wait --for=delete pod \
 	--field-selector "spec.nodeName=${NODE_NAME}" \
 	-n "${DEFAULT_GPU_CLIENTS_NAMESPACE}" \
 	-l app=nvidia-dcgm
+
+echo "Waiting for gpu-config-daemon to shutdown"
+kubectl wait --for=delete pod \
+	--timeout=5m \
+	--field-selector "spec.nodeName=${NODE_NAME}" \
+	-n "${DEFAULT_GPU_CLIENTS_NAMESPACE}" \
+	-l component=gpu-config-daemon
 
 echo "Removing the cuda-validator pod"
 kubectl delete pod \
