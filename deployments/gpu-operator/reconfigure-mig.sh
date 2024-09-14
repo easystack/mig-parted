@@ -607,4 +607,27 @@ if [ "${?}" != "0" ]; then
 	exit_failed
 fi
 
+echo "Restarting gpu-config-daemon previously shutdown in Kubernetes by reenabling their component-specific nodeSelector labelsin NodeFeatureRule"
+driver_version=`nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1`
+cat <<EOF | kubectl apply -f -
+apiVersion: nfd.k8s-sigs.io/v1alpha1
+kind: NodeFeatureRule
+metadata:
+  name: gpu-driver-${NODE_NAME}
+spec:
+  rules:
+  - name: "gpu driver"
+    labels:
+      ecns.easystack.io/gpu.driver: nvidia
+      ecns.easystack.io/gpu.driver.version: ${driver_version}
+    matchFeatures:
+    - feature: system.name
+      matchExpressions:
+        nodename: {op: In, value: ["${NODE_NAME}"]}
+EOF
+if [ "${?}" != "0" ]; then
+	echo "Unable to bring up GPU client components by setting their daemonset labels"
+	exit_failed
+fi
+
 exit_success
