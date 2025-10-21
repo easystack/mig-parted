@@ -23,10 +23,13 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	log "github.com/sirupsen/logrus"
 	cli "github.com/urfave/cli/v2"
 
+	migv1 "github.com/NVIDIA/mig-parted/api/spec/v1"
 	"github.com/NVIDIA/mig-parted/internal/info"
 
 	v1 "k8s.io/api/core/v1"
@@ -372,6 +375,10 @@ func parseGPUCLientsFile(file string) (*GPUClients, error) {
 }
 
 func runScript(migConfigValue string, driverLibraryPath string, nvidiaSMIPath string) error {
+	if isUpdated, err := isConfigFileUpdated(configFileFlag, migConfigValue); !isUpdated {
+		return fmt.Errorf("error validating MIG config file: %v", err)
+	}
+
 	gpuClients, err := parseGPUCLientsFile(gpuClientsFileFlag)
 	if err != nil {
 		return fmt.Errorf("error parsing host's GPU clients file: %s", err)
@@ -432,4 +439,85 @@ func ContinuouslySyncMigConfigChanges(clientset *kubernetes.Clientset, migConfig
 	stop := make(chan struct{})
 	go controller.Run(stop)
 	return stop
+}
+
+func isConfigFileUpdated(configFile, migConfig string) (bool, error) {
+	isUpdated := false
+
+	if configFile == "-" {
+		return true, nil
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return false, fmt.Errorf("new watcher error: %v", err)
+	}
+	defer watcher.Close()
+
+	err = watcher.Add(filepath.Dir(configFile))
+	if err != nil {
+		return false, fmt.Errorf("watch file error: %v", err)
+	}
+
+	if isUpdated, _ = validateConfigFile(configFile, migConfig); isUpdated {
+		log.Infof("MIG config is updated")
+		return true, nil
+	}
+	log.Infof("Specified config %v not found, start watching", migConfig)
+
+	done := make(chan bool)
+
+	go func() {
+		// kubelet periodically requeues the Pod after 60-90 seconds.
+		// Set timeout for 90 seconds.
+		// refer: https://ahmet.im/blog/kubernetes-secret-volumes-delay/
+		timeout := time.After(90 * time.Second)
+		for {
+			select {
+			case event := <-watcher.Events:
+				log.Debugf("%s has been %s", event.Name, event.Op)
+				if event.Op&fsnotify.Create == fsnotify.Create && filepath.Base(event.Name) == "..data" {
+					if isUpdated, err = validateConfigFile(configFile, migConfig); isUpdated {
+						log.Infof("MIG config is updated")
+						done <- true
+						return
+					}
+					log.Errorf("Validate error: %v", err)
+				}
+			case err = <-watcher.Errors:
+				log.Errorf("Watch error: %v", err)
+			case <-timeout:
+				log.Warnf("Timeout reached. Exiting...")
+				err = fmt.Errorf("watch file timeout")
+				done <- true
+				return
+			}
+		}
+	}()
+
+	<-done
+
+	return isUpdated, err
+}
+
+func validateConfigFile(configFile, migConfig string) (bool, error) {
+	var err error
+	var configYaml []byte
+
+	configYaml, err = os.ReadFile(configFile)
+	if err != nil {
+		return false, fmt.Errorf("read error: %v", err)
+	}
+
+	var spec migv1.Spec
+	err = yaml.Unmarshal(configYaml, &spec)
+	if err != nil {
+		return false, fmt.Errorf("unmarshal error: %v", err)
+	}
+
+	if _, ok := spec.MigConfigs[migConfig]; !ok {
+		return false, fmt.Errorf("the requested MIG configuration %s is not present in the configuration file", migConfig)
+	}
+
+	return true, nil
 }
