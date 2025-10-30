@@ -212,7 +212,8 @@ function __set_state_and_exit() {
 			nvidia.com/gpu.deploy.device-plugin=$(maybe_set_true ${PLUGIN_DEPLOYED}) \
 			nvidia.com/gpu.deploy.gpu-feature-discovery=$(maybe_set_true ${GFD_DEPLOYED}) \
 			nvidia.com/gpu.deploy.dcgm-exporter=$(maybe_set_true ${DCGM_EXPORTER_DEPLOYED}) \
-			nvidia.com/gpu.deploy.dcgm=$(maybe_set_true ${DCGM_DEPLOYED})
+			nvidia.com/gpu.deploy.dcgm=$(maybe_set_true ${DCGM_DEPLOYED}) \
+			synapse.ecns.easystack.io/gpu.deploy.config-daemon=$(maybe_set_true ${CONFIG_DAEMON_DEPLOYED})
 			if [ "${?}" != "0" ]; then
 				echo "Unable to bring up GPU client pods by setting their daemonset labels"
 				exit_code=1
@@ -435,6 +436,14 @@ if [ "${?}" != "0" ]; then
 fi
 echo "Current value of 'nvidia.com/gpu.deploy.nvsm=${NVSM_DEPLOYED}'"
 
+echo "Getting current value of the 'synapse.ecns.easystack.io/gpu.deploy.config-daemon' node label"
+CONFIG_DAEMON_DEPLOYED=$(kubectl get nodes ${NODE_NAME} -o=jsonpath='{$.metadata.labels.ecns\.easystack\.io/gpu\.deploy\.config-daemon}')
+if [ "${?}" != "0" ]; then
+	echo "Unable to get the value of the 'synapse.ecns.easystack.io/gpu.deploy.config-daemon' label"
+	exit_failed
+fi
+echo "Current value of 'synapse.ecns.easystack.io/gpu.deploy.config-daemon=${CONFIG_DAEMON_DEPLOYED}'"
+
 echo "Asserting that the requested configuration is present in the configuration file"
 nvidia-mig-parted assert --valid-config -f ${MIG_CONFIG_FILE} -c ${SELECTED_MIG_CONFIG}
 if [ "${?}" != "0" ]; then
@@ -497,7 +506,8 @@ kubectl label --overwrite \
 	nvidia.com/gpu.deploy.gpu-feature-discovery=$(maybe_set_paused ${GFD_DEPLOYED}) \
 	nvidia.com/gpu.deploy.dcgm-exporter=$(maybe_set_paused ${DCGM_EXPORTER_DEPLOYED}) \
 	nvidia.com/gpu.deploy.dcgm=$(maybe_set_paused ${DCGM_DEPLOYED}) \
-	nvidia.com/gpu.deploy.nvsm=$(maybe_set_paused ${NVSM_DEPLOYED})
+	nvidia.com/gpu.deploy.nvsm=$(maybe_set_paused ${NVSM_DEPLOYED}) \
+	synapse.ecns.easystack.io/gpu.deploy.config-daemon=$(maybe_set_paused ${CONFIG_DAEMON_DEPLOYED})
 if [ "${?}" != "0" ]; then
 	echo "Unable to tear down GPU client pods by setting their daemonset labels"
 	exit_failed
@@ -530,6 +540,13 @@ kubectl wait --for=delete pod \
 	--field-selector "spec.nodeName=${NODE_NAME}" \
 	-n "${DEFAULT_GPU_CLIENTS_NAMESPACE}" \
 	-l app=nvidia-dcgm
+
+echo "Waiting for gpu-config-daemon to shutdown"
+kubectl wait --for=delete pod \
+	--timeout=5m \
+	--field-selector "spec.nodeName=${NODE_NAME}" \
+	-n "${DEFAULT_GPU_CLIENTS_NAMESPACE}" \
+	-l component=gpu-config-daemon
 
 echo "Removing the cuda-validator pod"
 kubectl delete pod \
@@ -647,7 +664,8 @@ kubectl label --overwrite \
 	nvidia.com/gpu.deploy.gpu-feature-discovery=$(maybe_set_true ${GFD_DEPLOYED}) \
 	nvidia.com/gpu.deploy.dcgm-exporter=$(maybe_set_true ${DCGM_EXPORTER_DEPLOYED}) \
 	nvidia.com/gpu.deploy.dcgm=$(maybe_set_true ${DCGM_DEPLOYED}) \
-	nvidia.com/gpu.deploy.nvsm=$(maybe_set_true ${NVSM_DEPLOYED})
+	nvidia.com/gpu.deploy.nvsm=$(maybe_set_true ${NVSM_DEPLOYED}) \
+	synapse.ecns.easystack.io/gpu.deploy.config-daemon=$(maybe_set_true ${CONFIG_DAEMON_DEPLOYED})
 if [ "${?}" != "0" ]; then
 	echo "Unable to bring up GPU client components by setting their daemonset labels"
 	exit_failed
